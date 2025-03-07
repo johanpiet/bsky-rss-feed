@@ -1,6 +1,13 @@
 const RssParser = require("rss-parser");
 const sqlite3 = require("sqlite3").verbose();
+const atproto = require("@atproto/api");
+
 const db = new sqlite3.Database("rss.db");
+const bskyagent = new atproto.BskyAgent({
+    service: 'https://bsky.social',
+  })
+
+bskyagent.login({identifier: "", password: ""});
 
 const createTableSql = `
     CREATE TABLE IF NOT EXISTS items (
@@ -10,6 +17,7 @@ const createTableSql = `
         link TEXT UNIQUE NOT NULL,
         contentSnippet TEXT NOT NULL
     )`;
+
 db.run(createTableSql, (err) => {
   if (err) {
     return console.error("Error creating table:", err.message);
@@ -20,11 +28,14 @@ db.run(createTableSql, (err) => {
 // Create a new RSS parser instance
 const parser = new RssParser();
 
+console.log(new Date().toString());
+
+
 // Fetch and parse the RSS feed
 parser.parseURL("https://zenit.org/feed/").then((feed) => {
   // Loop through the items in the feed
   feed.items.forEach((item) => {
-    console.log(item);
+    // console.log(item);
     process(item);
   });
 });
@@ -39,7 +50,7 @@ function process(item) {
 
     if (row) {
       console.log(`Item with GUID ${item.guid} already exists.`);
-    } else {
+    } else {      
       // If the item doesn't exist, insert a new item
       const insertQuery =
         "INSERT INTO items (guid, title, link, contentSnippet) VALUES (?, ?, ?, ?)";
@@ -55,6 +66,25 @@ function process(item) {
           }
         }
       );
+
+      post(item);
     }
   });
+}
+
+function post(item) {
+  
+  // 274 = max length of a message (300) - the length of a truncated link (25) - 1 (offset).
+  const rt = new atproto.RichText({
+    text: `${item.contentSnippet.substring(0,274)} ${item.link}`,
+  })
+
+  rt.detectFacets(bskyagent) // automatically detects mentions and links
+  const postRecord = {
+    $type: 'app.bsky.feed.post',
+    text: rt.text,
+    facets: rt.facets,
+    createdAt: new Date().toISOString(),
+  }
+  bskyagent.post(postRecord);
 }
