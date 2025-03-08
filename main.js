@@ -1,13 +1,14 @@
 const RssParser = require("rss-parser");
 const sqlite3 = require("sqlite3").verbose();
 const atproto = require("@atproto/api");
+const dotenv = require('dotenv').configDotenv();
 
-const db = new sqlite3.Database("rss.db");
+const db = new sqlite3.Database("data/rss.db");
 const bskyagent = new atproto.BskyAgent({
     service: 'https://bsky.social',
   })
 
-bskyagent.login({identifier: "", password: ""});
+bskyagent.login({identifier: dotenv.parsed.BLUESKY_USERNAME, password: dotenv.parsed.BLUESKY_PASSWORD});
 
 const createTableSql = `
     CREATE TABLE IF NOT EXISTS items (
@@ -51,6 +52,8 @@ function process(item) {
     if (row) {
       console.log(`Item with GUID ${item.guid} already exists.`);
     } else {      
+      post(item);
+      
       // If the item doesn't exist, insert a new item
       const insertQuery =
         "INSERT INTO items (guid, title, link, contentSnippet) VALUES (?, ?, ?, ?)";
@@ -66,8 +69,6 @@ function process(item) {
           }
         }
       );
-
-      post(item);
     }
   });
 }
@@ -76,7 +77,7 @@ function post(item) {
   
   // 274 = max length of a message (300) - the length of a truncated link (25) - 1 (offset).
   const rt = new atproto.RichText({
-    text: `${item.contentSnippet.substring(0,274)} ${item.link}`,
+    text: `${item.contentSnippet.substring(0,299-item.link.length)} ${item.link}`,
   })
 
   rt.detectFacets(bskyagent) // automatically detects mentions and links
