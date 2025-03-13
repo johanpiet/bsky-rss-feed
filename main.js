@@ -1,16 +1,12 @@
-const RssParser = require("rss-parser");
 const sqlite3 = require("sqlite3").verbose();
 const atproto = require("@atproto/api");
-const dotenv = require("dotenv").configDotenv();
+require("dotenv").configDotenv();
+const { XMLParser } = require("fast-xml-parser");
+const text = require("node:stream/consumers").text;
 
 const db = new sqlite3.Database("data/rss.db");
-const bskyagent = new atproto.BskyAgent({
+const bskyagent = new atproto.AtpAgent({
   service: "https://bsky.social",
-});
-
-bskyagent.login({
-  identifier: dotenv.parsed.BLUESKY_USERNAME,
-  password: dotenv.parsed.BLUESKY_PASSWORD,
 });
 
 const createTableSql = `
@@ -29,32 +25,50 @@ db.run(createTableSql, (err) => {
   console.log("Table created successfully");
 });
 
+var item = {};
+const xmlParseOptions = {
+  ignoreAttributes: false,
+  tagValueProcessor: (tagName, tagValue) => {
+    if (tagName == "title") {
+      item.title = tagValue;
+    } else if (tagName == "link") {
+      item.link = tagValue;
+    } else if (tagName == "guid") {
+      item.guid = tagValue;
+      processItem({ ...item });
+      item = {};
+    }
+
+    return tagValue;
+  },
+};
+
 console.log(new Date().toString());
 
-// Create a new RSS parser instance
-const parser = new RssParser();
+bskyagent.login({
+  identifier: process.env.BLUESKY_USERNAME,
+  password: process.env.BLUESKY_PASSWORD,
+});
 
-// Fetch and parse the RSS feed
-parser.parseURL("https://zenit.org/feed/").then((feed) => {
-  // Loop through the items in the feed
-  feed.items.forEach((item) => {
-    // console.log(item);
-    process(item);
+var item = {};
+fetch("https://zenit.org/feed/").then((response) => {
+  text(response.body).then((body) => {
+    new XMLParser(xmlParseOptions).parse(body);
   });
 });
 
-function process(item) {
+function processItem(feedItem) {
   // First, check if the item with the specific guid exists
-  db.get("SELECT * FROM items WHERE guid = ?", [item.guid], (err, row) => {
+  db.get("SELECT * FROM items WHERE guid = ?", [feedItem.guid], (err, row) => {
     if (err) {
       console.error("Error checking item:", err);
       return;
     }
 
     if (row) {
-      console.log(`Item with GUID ${item.guid} already exists.`);
+      console.log(`Item with GUID ${feedItem.guid} already exists.`);
     } else {
-      post(item);
+      post(feedItem);
 
       // If the item doesn't exist, insert a new item
       const insertQuery =
@@ -62,12 +76,14 @@ function process(item) {
 
       db.run(
         insertQuery,
-        [item.guid, item.title, item.link, item.contentSnippet],
+        [feedItem.guid, feedItem.title, feedItem.link, " "],
         function (err) {
           if (err) {
             console.error("Error inserting item:", err);
           } else {
-            console.log(`Item with GUID ${item.guid} inserted successfully.`);
+            console.log(
+              `Item with GUID ${feedItem.guid} inserted successfully.`
+            );
           }
         }
       );
@@ -75,12 +91,12 @@ function process(item) {
   });
 }
 
-function post(item) {
-  // 274 = max length of a message (300) - the length of the link - 1 (offset).
+function post(feedItem) {
   const rt = new atproto.RichText({
-    text: `${item.contentSnippet.substring(0, 299 - item.link.length)} ${
-      item.link
-    }`,
+    text: `${feedItem.title.substring(
+      0,
+      299 - feedItem.link.length - 7
+    )} [...] ${feedItem.link}`,
   });
 
   rt.detectFacets(bskyagent); // automatically detects mentions and links
