@@ -9,6 +9,6 @@ BLUESKY_USERNAME=<username for bluesky, typically an email-address>
 BLUESKY_PASSWORD=<password for the user to login to bluesky>
 
 Run with:
-node --env-file=.env main.js
+`node --env-file=.env main.js`
 
-To schedule it, you can create a cron job or do it manual (e.g. with a `wacht -n 60` to schedule every minute).
+To schedule it, you can create a cron job or do it manual (e.g. with a `watch -n 60` to schedule every minute).
