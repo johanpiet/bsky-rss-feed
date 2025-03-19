@@ -1,6 +1,5 @@
 const sqlite3 = require("sqlite3").verbose();
 const atproto = require("@atproto/api");
-require("dotenv").configDotenv();
 const { XMLParser } = require("fast-xml-parser");
 const text = require("node:stream/consumers").text;
 
